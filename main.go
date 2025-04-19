@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jessevdk/go-flags"
@@ -43,10 +46,26 @@ type Client struct {
 	Addr string
 }
 
+type Config struct {
+	APIKey   string
+	SystemID string
+}
+
+type Reading struct {
+	Date        time.Time // will be formatted YYYYMMDD
+	Power       int       // watts
+	Energy      int       // watt-hours
+	Voltage     int       // volts (optional)
+	Temperature int       // degrees Celsius (optional)
+}
+
 type Options struct {
+	ApiKey    string `short:"a" long:"api-key" description:"The PVOutput API key"`
+	Debug     bool   `short:"d" long:"debug" description:"Show debug output"`
 	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter"`
 	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899"`
 	Polling   bool   `long:"polling" description:"Polling mode"`
+	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID"`
 }
 
 var opts Options
@@ -76,7 +95,27 @@ func main() {
 		if err != nil {
 			log.Printf("Failed to marshal data: %v\n", err)
 		} else {
-			fmt.Println(string(jsonData))
+			if opts.Debug {
+				fmt.Println(string(jsonData))
+			}
+		}
+
+		cfg := Config{
+			APIKey:   opts.ApiKey,
+			SystemID: opts.SystemID,
+		}
+
+		reading := Reading{
+			Date:        time.Now(),
+			Power:       int(data.PowerAC),
+			Energy:      int(data.YieldToday * 1000), // kWh → Wh
+			Voltage:     int(data.VoltageAC[0]),
+			Temperature: int(data.Temperature),
+		}
+
+		err = upload(cfg, reading)
+		if err != nil {
+			log.Printf("Upload to PVOutput failed: %v", err)
 		}
 
 		if opts.Polling {
@@ -204,6 +243,41 @@ func pow10(exp int) float64 {
 		}
 		return v
 	}
+}
+
+func upload(cfg Config, r Reading) error {
+	form := url.Values{}
+	form.Set("d", r.Date.Format("20060102"))
+	form.Set("t", r.Date.Format("15:04"))
+	form.Set("v1", fmt.Sprintf("%d", r.Energy))
+	form.Set("v2", fmt.Sprintf("%d", r.Power))
+	if r.Voltage > 0 {
+		form.Set("v6", fmt.Sprintf("%d", r.Voltage))
+	}
+	if r.Temperature > 0 {
+		form.Set("v5", fmt.Sprintf("%d", r.Temperature))
+	}
+
+	req, err := http.NewRequest("POST", "https://pvoutput.org/service/r2/addstatus.jsp", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Pvoutput-Apikey", cfg.APIKey)
+	req.Header.Set("X-Pvoutput-SystemId", cfg.SystemID)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("upload failed: %s", resp.Status)
+	}
+
+	return nil
 }
 
 func round(f float64, places int) float64 {
