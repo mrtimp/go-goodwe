@@ -60,12 +60,12 @@ type Reading struct {
 }
 
 type Options struct {
-	ApiKey    string `short:"a" long:"api-key" description:"The PVOutput API key"`
+	ApiKey    string `short:"a" long:"api-key" description:"The PVOutput API key" env:"API_KEY" required:"true"`
 	Debug     bool   `short:"d" long:"debug" description:"Show debug output"`
-	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter"`
-	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899"`
+	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter" env:"IP_ADDRESS" required:"true"`
+	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899" env:"PORT"`
 	Polling   bool   `long:"polling" description:"Polling mode"`
-	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID"`
+	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID" env:"SYSTEM_ID" required:"true"`
 }
 
 var opts Options
