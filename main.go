@@ -95,6 +95,7 @@ func main() {
 
 		if opts.Debug {
 			fmt.Println(string(jsonData))
+			os.Exit(0)
 		}
 
 		cfg := Config{
