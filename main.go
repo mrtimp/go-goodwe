@@ -64,7 +64,6 @@ type Options struct {
 	Debug     bool   `short:"d" long:"debug" description:"Show debug output"`
 	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter" env:"IP_ADDRESS" required:"true"`
 	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899" env:"PORT"`
-	Polling   bool   `long:"polling" description:"Polling mode"`
 	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID" env:"SYSTEM_ID" required:"true"`
 }
 
@@ -86,18 +85,16 @@ func main() {
 	for {
 		data, err := client.GetData(3)
 		if err != nil {
-			log.Printf("Failed to get data: %v\n", err)
-			time.Sleep(5 * time.Second)
-			continue
+			log.Fatalf("Failed to get data: %v\n", err)
 		}
 
 		jsonData, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
-			log.Printf("Failed to marshal data: %v\n", err)
-		} else {
-			if opts.Debug {
-				fmt.Println(string(jsonData))
-			}
+			log.Fatalf("Failed to marshal data: %v\n", err)
+		}
+
+		if opts.Debug {
+			fmt.Println(string(jsonData))
 		}
 
 		cfg := Config{
@@ -115,14 +112,10 @@ func main() {
 
 		err = upload(cfg, reading)
 		if err != nil {
-			log.Printf("Upload to PVOutput failed: %v", err)
+			log.Fatalf("Upload to PVOutput failed: %v", err)
 		}
 
-		if opts.Polling {
-			time.Sleep(30 * time.Second)
-		} else {
-			os.Exit(0)
-		}
+		os.Exit(0)
 	}
 }
 
