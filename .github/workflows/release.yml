@@ -9,7 +9,7 @@ jobs:
   goreleaser:
     runs-on: ubuntu-24.04
     permissions:
-          contents: write
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
 
   dockerhub:
     runs-on: ubuntu-24.04
-      steps:
+    steps:
       - name: Checkout
         uses: actions/checkout@v4
 
