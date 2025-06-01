@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -126,7 +127,12 @@ func geocode(location string) (float64, float64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			return
+		}
+	}(resp.Body)
 
 	var results nominatimResult
 	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
@@ -173,7 +179,10 @@ func main() {
 
 		coords = [2]float64{lat, lon}
 		cache[opts.Location] = coords
-		saveCache(cachePath, cache)
+		err = saveCache(cachePath, cache)
+		if err != nil {
+			log.Errorf("Error saving cache: %v\n", err)
+		}
 	}
 
 	lat, lon := coords[0], coords[1]
@@ -257,8 +266,16 @@ func (c *Client) getData() (*Data, error) {
 		return nil, err
 	}
 
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(1 * time.Second))
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			return
+		}
+	}(conn)
+	err = conn.SetDeadline(time.Now().Add(1 * time.Second))
+	if err != nil {
+		return nil, err
+	}
 
 	// Discovery request payload
 	request := []byte{0x7f, 0x03, 0x75, 0x94, 0x00, 0x49}
@@ -380,7 +397,12 @@ func upload(cfg Config, r Reading) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			return
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("upload failed: %s", resp.Status)
