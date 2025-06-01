@@ -1,2 +1,4 @@
 /.idea
 /go-goodwe-*
+/.location_cache.json
+/dist

@@ -2,17 +2,11 @@ version: 2
 
 builds:
   - goos:
-    - linux
-    - darwin
-    - windows
-
-brews:
-  - repository:
-      owner: mrtimp
-      name: homebrew-formulas
-    directory: Formula
-    homepage: "https://github.com/mrtimp/go-goodwe"
-    description: "Monitor GoodWe inverters with Go"
-    commit_author:
-      name: mrtimp
-      email: timp@unfuddle.nz
+      - linux
+      - darwin
+      - windows
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.Commit}}
+      - -X main.BuildDate={{.Date}}
