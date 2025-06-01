@@ -68,7 +68,7 @@ type Options struct {
 	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter" env:"IP_ADDRESS" required:"true"`
 	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899" env:"PORT"`
 	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID" env:"SYSTEM_ID" required:"true"`
-	Location  string `short:"l" long:"location" description:"Location (city, country)" required:"true"`
+	Location  string `short:"l" long:"location" description:"Location (city, country)" env:"LOCATION" required:"true"`
 }
 
 var opts Options
