@@ -6,15 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jessevdk/go-flags"
+	"github.com/nathan-osman/go-sunrise"
+	log "github.com/sirupsen/logrus"
 )
 
 type GoodWeStatus int
@@ -65,9 +67,81 @@ type Options struct {
 	IpAddress string `short:"i" long:"ip-address" description:"The IP address of the GoodWe inverter" env:"IP_ADDRESS" required:"true"`
 	Port      int    `short:"p" long:"port" description:"The port that the GoodWe inverter is listening on" default:"8899" env:"PORT"`
 	SystemID  string `short:"s" long:"system-id" description:"The PVOutput System ID" env:"SYSTEM_ID" required:"true"`
+	Location  string `short:"l" long:"location" description:"Location (city, country)" required:"true"`
 }
 
 var opts Options
+
+type LocationCache map[string][2]float64
+
+type nominatimResult []struct {
+	Lat string `json:"lat"`
+	Lon string `json:"lon"`
+}
+
+func loadCache(path string) (LocationCache, error) {
+	log.Debugf("Loading location cache from %s", path)
+
+	var cache LocationCache
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return make(LocationCache), nil // cache is empty
+		}
+
+		return nil, err
+	}
+
+	if err := json.Unmarshal(b, &cache); err != nil {
+		return nil, err
+	}
+
+	return cache, nil
+}
+
+func saveCache(path string, cache LocationCache) error {
+	log.Debugf("Saving cache %v to %s", cache, path)
+
+	b, err := json.MarshalIndent(cache, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, b, 0644)
+}
+
+func geocode(location string) (float64, float64, error) {
+	endpoint := "https://nominatim.openstreetmap.org/search"
+	params := url.Values{}
+	params.Set("q", location)
+	params.Set("format", "json")
+	params.Set("limit", "1")
+
+	reqURL := fmt.Sprintf("%s?%s", endpoint, params.Encode())
+	req, _ := http.NewRequest("GET", reqURL, nil)
+	req.Header.Set("User-Agent", "GoGoodWe/1.0")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	var results nominatimResult
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return 0, 0, err
+	}
+
+	if len(results) == 0 {
+		return 0, 0, fmt.Errorf("location not found")
+	}
+
+	lat, _ := strconv.ParseFloat(results[0].Lat, 64)
+	lon, _ := strconv.ParseFloat(results[0].Lon, 64)
+
+	return lat, lon, nil
+}
 
 func main() {
 	_, err := flags.Parse(&opts)
@@ -76,8 +150,46 @@ func main() {
 		os.Exit(1)
 	}
 
-	if opts.IpAddress == "" {
-		log.Fatal("You must provide an IP address")
+	log.SetOutput(os.Stderr)
+
+	if opts.Debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.WarnLevel)
+	}
+
+	cachePath := ".location_cache.json"
+	cache, _ := loadCache(cachePath)
+	coords, ok := cache[opts.Location]
+
+	if !ok {
+		log.Debugf("Geocoding location: %s\n", opts.Location)
+
+		lat, lon, err := geocode(opts.Location)
+		if err != nil {
+			fmt.Printf("Geocoding error: %v\n", err)
+			os.Exit(1)
+		}
+
+		coords = [2]float64{lat, lon}
+		cache[opts.Location] = coords
+		saveCache(cachePath, cache)
+	}
+
+	lat, lon := coords[0], coords[1]
+
+	now := time.Now()
+	year, month, day := now.Date()
+	sunriseTime, sunsetTime := sunrise.SunriseSunset(lat, lon, year, month, day)
+
+	afterSunUp := func() bool { return now.After(sunriseTime) }
+	afterSunDown := func() bool { return now.After(sunsetTime) }
+
+	log.Debugf("Sun up: %v, sun down: %v\n", afterSunUp(), afterSunDown())
+
+	if !afterSunUp() && afterSunDown() {
+		log.Info("Running before sun up and after sun down, exiting")
+		os.Exit(0)
 	}
 
 	client := New(opts.IpAddress, opts.Port)
@@ -94,7 +206,7 @@ func main() {
 		}
 
 		if opts.Debug {
-			fmt.Println(string(jsonData))
+			log.Debug(string(jsonData))
 			os.Exit(0)
 		}
 
@@ -130,10 +242,12 @@ func (c *Client) GetData(retries int) (*Data, error) {
 		if err == nil {
 			return data, nil
 		}
+
 		if i < retries-1 {
 			time.Sleep(time.Second)
 		}
 	}
+
 	return nil, errors.New("failed to get data after retries")
 }
 
@@ -142,6 +256,7 @@ func (c *Client) getData() (*Data, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(1 * time.Second))
 
