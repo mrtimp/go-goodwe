@@ -191,13 +191,16 @@ func main() {
 	year, month, day := now.Date()
 	sunriseTime, sunsetTime := sunrise.SunriseSunset(lat, lon, year, month, day)
 
-	afterSunUp := func() bool { return now.After(sunriseTime) }
+	beforeSunUp := func() bool { return now.Before(sunriseTime) }
 	afterSunDown := func() bool { return now.After(sunsetTime) }
 
-	log.Debugf("Sun up: %v, sun down: %v\n", afterSunUp(), afterSunDown())
+	log.Debugf("Before sun up: %v, after ssun down: %v\n", beforeSunUp(), afterSunDown())
 
-	if !afterSunUp() && afterSunDown() {
-		log.Info("Running before sun up and after sun down, exiting")
+	if beforeSunUp() {
+		log.Info("Running before sun up, exiting")
+		os.Exit(0)
+	} else if afterSunDown() {
+		log.Info("Running after sun down, exiting")
 		os.Exit(0)
 	}
 
